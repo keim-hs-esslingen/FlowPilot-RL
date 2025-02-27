@@ -53,16 +53,16 @@ python main.py
 ```
 Then, open your browser and navigate to http://localhost:5000 to access the WebUI for real-time monitoring and control.
 
-### Evaluation
+## Evaluation
 The framework has been evaluated using a branching Deep Q-Network (DQN) with an epsilon-greedy exploration strategy, experience replay, and Double Q-Learning to address overestimation bias. Initial results from training on a realistic urban network (modeled on the city center of Aalen) demonstrate a clear improvement in traffic flow and congestion reduction.
 
-### Future Work
+## Future Work
 Future enhancements may include:
 
 - **Additional Data Sources**: Integrating pedestrian dynamics and weather data for improved realism.
 - **Advanced RL Algorithms**: Experimenting with hybrid models and alternative exploration strategies.
 - **Network-Level Control**: Scaling the framework for large-scale, network-wide traffic management.
 
-### License
+## License
 This project is licensed under the MIT License. See the LICENSE file for details.
 
