@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Traffic Light Control</title>
+  <!-- Bootstrap CSS -->
+  <link
+    rel="stylesheet"
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+  />
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    .chart-container {
+      position: relative;
+      height: 300px;
+      margin-bottom: 1rem;
+    }
+    .status-text {
+      font-weight: bold;
+    }
+    .status-text.idle {
+      color: gray;
+    }
+    .status-text.running {
+      color: green;
+    }
+    .status-text.paused {
+      color: orange;
+    }
+    .status-text.stopped {
+      color: red;
+    }
+  </style>
+</head>
+<body class="bg-light">
+<div class="container my-4">
+  <h1 class="text-center mb-4">Training Dashboard</h1>
+  <div class="row">
+    <!-- Left panel: Status and buttons -->
+    <div class="col-md-3">
+      <div class="card shadow mb-4">
+        <div class="card-body">
+          <p>Status: 
+            <span id="status" class="status-text idle">Idle</span>
+          </p>
+          <p>Step: <span id="step">-</span></p>
+          <p>Reward: <span id="reward">-</span></p>
+          <p>Epoch: <span id="epoch">-</span></p>
+        </div>
+      </div>
+      <div class="d-grid gap-2">
+        <button id="startBtn" class="btn btn-success">Start</button>
+        <button id="pauseBtn" class="btn btn-warning">Pause</button>
+        <button id="stopBtn" class="btn btn-danger">Stop</button>
+        <button id="restartBtn" class="btn btn-primary">Restart</button>
+        <button id="exportBtn" class="btn btn-info">Export Weights</button>
+        <button id="importBtn" class="btn btn-info">Import Weights</button>
+      </div>
+    </div>
+
+    <!-- Right panel: Charts -->
+    <div class="col-md-9">
+      <div class="card shadow mb-4">
+        <div class="card-body">
+          <div class="chart-container">
+            <canvas id="myChart"></canvas>
+          </div>
+        </div>
+      </div>
+      <div class="card shadow mb-4">
+        <div class="card-body">
+          <div class="chart-container">
+            <canvas id="loss"></canvas>
+          </div>
+        </div>
+      </div>
+      <div class="card shadow mb-4">
+        <div class="card-body">
+          <div class="chart-container">
+            <canvas id="avg_loss"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Bootstrap JS (includes Popper) -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+  // Helper to generate random colors
+  function getRandomColor() {
+    let letters = '0123456789ABCDEF'.split('');
+    let color = '#';
+    for (let i = 0; i < 6; i++) {
+      color += letters[Math.floor(Math.random() * 16)];
+    }
+    return color;
+  }
+
+  // Create WebSocket connection
+  let websocket = new WebSocket("ws://localhost:8000/ws");
+  websocket.onopen = function () {
+    console.log("WebSocket connection opened");
+  };
+
+  // Reusable chart options for a consistent look
+  const commonChartOptions = (titleText, yLabelText) => ({
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: false,
+    interaction: {
+      mode: 'index',
+      intersect: false
+    },
+    plugins: {
+      legend: {
+        display: true,
+        labels: {
+          color: '#333'
+        }
+      },
+      title: {
+        display: true,
+        text: titleText,
+        color: '#333',
+        font: {
+          size: 16,
+          weight: 'bold'
+        }
+      },
+      tooltip: {
+        enabled: true
+      }
+    },
+    scales: {
+      x: {
+        type: 'linear',
+        display: true,
+        title: {
+          display: true,
+          text: 'Steps'
+        },
+        grid: {
+          color: '#ccc'
+        },
+        ticks: {
+          color: '#333'
+        }
+      },
+      y: {
+        display: true,
+        title: {
+          display: true,
+          text: yLabelText
+        },
+        grid: {
+          color: '#ccc'
+        },
+        ticks: {
+          color: '#333'
+        }
+      }
+    },
+    elements: {
+      line: {
+        tension: 0.2,    // smooth lines
+        borderWidth: 2
+      },
+      point: {
+        radius: 0
+      }
+    }
+  });
+
+  // Initialize the charts
+  const ctx = document.getElementById('myChart');
+  const chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: [], // steps on X-axis
+      datasets: []
+    },
+    options: {
+      ...commonChartOptions('Reward Over Steps', 'Reward'),
+      scales: {
+        ...commonChartOptions('Reward Over Steps', 'Reward').scales,
+        x: {
+          ...commonChartOptions('Reward Over Steps', 'Reward').scales.x,
+          min: 0,
+          max: 5000
+        },
+        y: {
+          ...commonChartOptions('Reward Over Steps', 'Reward').scales.y,
+          min: -1,
+          max: 1
+        }
+      }
+    }
+  });
+
+  const lossCtx = document.getElementById('loss');
+  const lossChart = new Chart(lossCtx, {
+    type: 'line',
+    data: {
+      labels: [], // steps on X-axis
+      datasets: []
+    },
+    options: commonChartOptions('Loss Over Steps', 'Loss')
+  });
+
+  const avg_lossCtx = document.getElementById('avg_loss');
+  const avg_lossChart = new Chart(avg_lossCtx, {
+    type: 'line',
+    data: {
+      // We'll store epoch as the X-axis for this chart
+      labels: [],
+      datasets: [{
+        label: 'Test/Epoch',
+        data: [],
+        pointRadius: 0,
+        borderWidth: 2
+      }]
+    },
+    options: {
+      ...commonChartOptions('Test Reward Over Epoch', 'Reward'),
+      scales: {
+        x: {
+          type: 'linear',
+          display: true,
+          title: {
+            display: true,
+            text: 'Epoch'
+          },
+          grid: {
+            color: '#ccc'
+          },
+          ticks: {
+            color: '#333'
+          }
+        },
+        y: {
+          display: true,
+          title: {
+            display: true,
+            text: 'Test Reward'
+          },
+          grid: {
+            color: '#ccc'
+          },
+          ticks: {
+            color: '#333'
+          }
+        }
+      }
+    }
+  });
+
+  // We keep arrays of datasets for the first two charts
+  // so we can limit to the last 10 epochs.
+  let rewardDatasets = [];
+  let lossDatasets = [];
+
+  let maxStep = 0;
+  let currentEpoch = -1;
+
+  // Update chart logic for reward/loss
+  function updateRewardLossCharts(msg) {
+    const step = msg.step;
+    const epoch = parseInt(msg.epoch);
+    const lossValue = Math.round(msg.loss * 1000) / 1000;
+    const rewardValue = Math.round(msg.reward * 1000) / 1000;
+
+    // Update DOM
+    document.getElementById("step").textContent = step;
+    document.getElementById("reward").textContent = rewardValue;
+    document.getElementById("epoch").textContent = epoch;
+
+    // If this is a new epoch, create a new dataset
+    if (epoch !== currentEpoch) {
+      currentEpoch = epoch;
+      const epochColor = getRandomColor();
+
+      // Create new dataset for reward chart
+      const newRewardDataset = {
+        label: 'Epoch ' + epoch,
+        data: [],
+        borderColor: epochColor,
+        pointRadius: 0,
+        order: -epoch
+      };
+      rewardDatasets.push(newRewardDataset);
+
+      // Create new dataset for loss chart
+      const newLossDataset = {
+        label: 'Epoch ' + epoch,
+        data: [],
+        borderColor: epochColor,
+        pointRadius: 0,
+        order: -epoch
+      };
+      lossDatasets.push(newLossDataset);
+
+      // Remove the oldest dataset if we have more than 10
+      if (rewardDatasets.length > 10) rewardDatasets.shift();
+      if (lossDatasets.length > 10) lossDatasets.shift();
+
+      // Update the chart's datasets
+      chart.data.datasets = rewardDatasets;
+      lossChart.data.datasets = lossDatasets;
+    }
+
+    // Append the data point to the last dataset (which is the current epoch)
+    const rewardLastDataset = rewardDatasets[rewardDatasets.length - 1];
+    rewardLastDataset.data.push({ x: step, y: rewardValue });
+
+    const lossLastDataset = lossDatasets[lossDatasets.length - 1];
+    lossLastDataset.data.push({ x: step, y: lossValue });
+
+    // Expand our X-axis labels if step is bigger than any we've seen
+    if (step > maxStep) {
+      maxStep = step;
+      // For clarity, we'll keep the global labels array in sync
+      // but each dataset is now storing (x,y) pairs. This is optional.
+      chart.data.labels.push(step);
+      lossChart.data.labels.push(step);
+    }
+  }
+
+  // WebSocket message handling
+  websocket.onmessage = function (event) {
+    const message = JSON.parse(event.data);
+
+    if (message.action === "forward") {
+      message.data.forEach(item => {
+        if (item.avg_loss) return; // skip if it's an avg_loss
+        if (item.test_reward !== undefined) {
+          // This belongs to the avg_lossChart
+          avg_lossChart.data.labels[parseInt(item.epoch)] = item.epoch;
+          avg_lossChart.data.datasets[0].data[parseInt(item.epoch)] = item.test_reward;
+        } else {
+          // Standard reward/loss update
+          updateRewardLossCharts(item);
+        }
+      });
+      chart.update();
+      lossChart.update();
+      avg_lossChart.update();
+
+    } else if (message.action === "step") {
+      if (message.data.avg_loss) {
+        // handle avg_loss if needed
+      } else if (message.data.test_reward !== undefined) {
+        // Update the avg_lossChart
+        avg_lossChart.data.labels[parseInt(message.data.epoch)] = message.data.epoch;
+        avg_lossChart.data.datasets[0].data[parseInt(message.data.epoch)] = message.data.test_reward;
+        avg_lossChart.update();
+      } else {
+        // Standard reward/loss update
+        updateRewardLossCharts(message.data);
+        chart.update();
+        lossChart.update();
+      }
+
+    } else if (message.action === "stopped") {
+      document.getElementById("status").textContent = "Stopped";
+      document.getElementById("status").className = "status-text stopped";
+
+    } else if (message.action === "exported") {
+      alert("Model weights exported successfully!");
+
+    } else if (message.action === "imported") {
+      alert("Model weights imported successfully!");
+    }
+  };
+
+  websocket.onerror = function (event) {
+    console.error("WebSocket error:", event);
+  };
+
+  // Button event listeners
+  document.getElementById("startBtn").addEventListener("click", function () {
+    websocket.send("start");
+    document.getElementById("status").textContent = "Running";
+    document.getElementById("status").className = "status-text running";
+  });
+
+  document.getElementById("pauseBtn").addEventListener("click", function () {
+    websocket.send("pause");
+    document.getElementById("status").textContent = "Paused";
+    document.getElementById("status").className = "status-text paused";
+  });
+
+  document.getElementById("stopBtn").addEventListener("click", function () {
+    websocket.send("stop");
+  });
+
+  document.getElementById("restartBtn").addEventListener("click", function () {
+    websocket.send("restart");
+  });
+
+  document.getElementById("exportBtn").addEventListener("click", function () {
+    websocket.send("export");
+  });
+
+  document.getElementById("importBtn").addEventListener("click", function () {
+    websocket.send("import");
+  });
+</script>
+</body>
+</html>

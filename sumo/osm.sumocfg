@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- generated on 2023-05-17 12:13:42 by Eclipse SUMO GUI Version 1.17.0
+-->
+
+<configuration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/sumoConfiguration.xsd">
+    <!-- <traci_server>
+        <remote-port value="3030" />
+    </traci_server> -->
+
+    <input>
+        
+        <net-file value="aalen.net.xml"/>
+        <route-files value="trips.rou2.xml"/>
+    </input>
+
+    <processing>
+        <ignore-route-errors value="true"/>
+        <time-to-teleport value="10000" />
+    </processing>
+
+    <routing>
+        <device.rerouting.adaptation-steps value="18"/>
+        <device.rerouting.adaptation-interval value="10"/>
+        <device.rerouting.threads value="8"/>
+    </routing>
+
+    <time>
+        <step-length value="1" />
+    </time>
+
+    <report>
+        <verbose value="true"/>
+        <duration-log.statistics value="true"/>
+        
+        <no-step-log value="true"/>
+        
+    </report>
+
+    <gui_only>
+        <start value="true"/>
+        <quit-on-end value="true" />
+        <delay value="0"/>
+    </gui_only>
+
+    <output>
+<!--        <statistic-output value="stats.out.xml" />-->
+<!--        <queue-output value="queue.out.xml" />-->
+    </output>
+</configuration>
